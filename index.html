@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Barrage Game</title>
+    <style>
+      body {
+        width: 50vw;
+        margin: 0;
+        background-color: #000;
+        font-family: monospace;
+      }
+
+      #container {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-content: stretch;
+        width: 100%;
+        outline: 1px solid lime;
+      }
+
+      #header {
+        display: block;
+        width: 100%;
+        outline: 1px solid red;
+      }
+
+      label,
+      input,
+      button {
+        outline: 1px solid cyan;
+        background: black;
+        color: white;
+        font: 24px monospace;
+      }
+
+      canvas {
+        border: 1px solid #000;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <div id="header">
+        <label id="label" for="#input"></label>
+        <input id="input" type="text" />
+        <button id="start" onClick="startWar()">Start Game</button>
+      </div>
+      <canvas id="gameCanvas" width="260" height="200"></canvas>
+    </div>
+    <script src="terrain.js"></script>
+    <script src="sound.js"></script>
+    <script src="graphics.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>
