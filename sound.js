@@ -85,7 +85,7 @@ class PenaltySounder extends Sounder {
 }
 
 const smallExplosionSounder = new NoiseSounder(1.2);
-const largeExplosionSounder = new NoiseSounder(5.0);
+const largeExplosionSounder = new NoiseSounder(6.0);
 const penaltySounder = new PenaltySounder();
 const projectileSounder = new ProjectileSounder();
 

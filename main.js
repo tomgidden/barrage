@@ -136,7 +136,7 @@ function gameOver() {
 function battleLoser() {
   if (them.population <= 0)
     return them;
-  if (them.soldiers <= 5)
+  if (them.soldiers <= 0)
     return them;
   if (us.population <= 0)
     return us;
@@ -400,7 +400,7 @@ async function fireProjectile({ shot, angle, velocity }) {
 
 async function handleLoss(victim, x, y) {
 
-  if (victim.soldiers <= 5) {
+  if (victim.soldiers <= 0) {
     drawExplosion(victim.base_x, terrain[victim.base_x], true);
     playDirectHitSound();
     await sleep(1000);
