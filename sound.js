@@ -6,7 +6,7 @@ class Sounder {
 
 class NoiseSounder extends Sounder {
 
-  constructor(duration = 1, samples = 4000) {
+  constructor(duration = 1, samples = 8000) {
     super();
 
     this.duration = duration;
