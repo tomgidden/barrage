@@ -11,7 +11,7 @@
 
       body {
         display: flex;
-        width:100vw;
+        width: 100vw;
         flex-direction: column;
         min-width: 640px;
         margin: 0;
@@ -22,7 +22,7 @@
       #container {
         display: flex;
         flex-direction: column;
-        justify-content: center;
+        justify-content: space-evenly;
         align-content: stretch;
         width: 50%;
         height: 100vh;
@@ -30,8 +30,21 @@
       }
 
       #header {
-        display: block;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
         width: 100%;
+      }
+
+      #footer {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: flex-end;
+        color: #666;
+      }
+      #footer a {
+        color: #666;
       }
 
       label,
@@ -53,13 +66,13 @@
   <body>
     <div id="container">
       <div id="header">
-        <!--
-        <label id="label" for="#input"></label>
-        <input id="input" type="text" />
-      -->
         <button id="start" onClick="startWar()">Start Game</button>
       </div>
       <canvas id="gameCanvas" width="320" height="256"></canvas>
+      <div id="footer">
+        <p>Original game: <a href="https://bbcmicro.co.uk/game.php?id=1873">BARRAGE, by P.R. Cox &amp; S. Barrow</a></p>
+        <p><a href="https://github.com/tomgidden/js-barrage">GitHub repo</a></p>
+      </div>
     </div>
     <script src="chrs.js"></script>
     <script src="terrain.js"></script>
