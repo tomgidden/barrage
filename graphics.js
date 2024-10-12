@@ -3,8 +3,10 @@ const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
 
 const canvasWidth = canvas.width;
 const canvasHeight = canvas.height;
-const xscale = canvas.width / 130;
-const yscale = canvas.height / 100;
+const xplotWidth = 130;
+const yplotWidth = 100;
+const xscale = canvas.width / xplotWidth;
+const yscale = canvas.height / yplotWidth;
 const flashiePeriod = 19 / 25 * 1000;
 
 const G = new (class {
@@ -185,7 +187,7 @@ const G = new (class {
   }
 
   clearTextArea(cx, cy, cw, ch) {
-    ctx.clearRect(8 * cx, canvasHeight - 8 * cy, 8 * cw, 8 * ch);
+    ctx.clearRect(8 * cx, 8 * cy, 8 * cw, 8 * ch);
     this.loadFramebuffer();
   }
 
