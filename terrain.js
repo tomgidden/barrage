@@ -1,3 +1,4 @@
+
 function generateTerrain() {
     terrain = new Array(130).fill(0);
 
@@ -5,20 +6,20 @@ function generateTerrain() {
     const x2 = players[1].base_x;
 
     // Generate left side of terrain
-    let h9 = Math.random() * 50 + 15;
+    let h9 = Math.floor(random1() * 50 + 15);
     for (let i = 0; i <= x1; i++) {
         terrain[i] = h9;
     }
 
     // Generate right side of terrain
-    h9 = Math.random() * 50 + 15;
+    h9 = Math.floor(random2() * 50 + 15);
     for (let i = x2; i < 130; i++) {
         terrain[i] = h9;
     }
 
     // Generate middle section with a peak
-    const x3 = x1 + Math.floor(Math.random() * (x2 - x1 - 24)) + 10;
-    terrain[x3] = Math.random() * 70 + 16;
+    const x3 = x1 + Math.floor(random3() * (x2 - x1 - 24)) + 10;
+    terrain[x3] = random1() * 70 + 16;
 
     const d1 = (terrain[x3] - terrain[0]) / 2;
     const d2 = (terrain[x3] - terrain[129]) / 2;
@@ -52,6 +53,17 @@ function generateTerrain() {
             terrain[i] = h9 + Math.cos(j * Math.PI / 180) * d;
         }
     }
+
+
+    // 0 <= x1, x2 < 65
+    // 0 <= x3 < 86
+    let dy0 = Math.floor(Math.min(...terrain));
+
+    console.log([terrain[x1], terrain[x3], terrain[x2], dy0]);
+
+    terrain = terrain.map(y => y-dy0+20);
+
+    console.log([terrain[x1], terrain[x3], terrain[x2], dy0]);
     
     return terrain;
 }
