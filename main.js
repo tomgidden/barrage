@@ -450,7 +450,6 @@ async function handleImpact(x, y) {
     if (!await handleLoss(us)) {
       drawExplosion(x, y, false);
       playCityHitSound();
-      playPenaltySound();
 
       await sleep(250);
       centerMessage(`CIVILIANS KILLED - ${casualties} CASUALTIES`);
@@ -468,7 +467,6 @@ async function handleImpact(x, y) {
       if (!await handleLoss(us)) {
         drawExplosion(x, y, false);
         playCityHitSound();
-        playPenaltySound();
 
         await sleep(250);
         centerMessage(`CIVILIANS KILLED - PENALTY = ${casualties}`);
