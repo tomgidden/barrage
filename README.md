@@ -20,4 +20,12 @@ Even so, there are some bugs I've added, eg. mid-air explosions when it
 reaches the edge of the screen. I'll get to them.
 
 
+Oh, and I'm fully intending to go through and comment it properly, as well
+as refactoring for clarity.  I want this to be nice, neat, simple code,
+although some details of the original game may require some hacky bits.
+
+Any advice on building a no-code backend for WebSockets to make this
+two-player between two browsers would be appreciated. I don't want to have
+to pay a fortune in hosting.
+
 -- Tom Gidden, October 2024
