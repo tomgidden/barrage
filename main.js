@@ -1,86 +1,114 @@
 'use strict';
 
+/**
+ * BARRAGE
+ * by P.R.Cox and S.Barrow, 1983
+ * ported to JavaScript by Tom Gidden, 2024
+ * 
+ * This is a reasonably faithful conversion of the BBC Micro game, with
+ * attention paid to fidelity to the original along with reasonably good
+ * structure.
+ * 
+ * As the original BBC Micro code is compact and a bit scrambled, it has
+ * a few negligible quirks -- mainly in drawing -- that would be a pain
+ * to replicate; and a few quirks that I've consciously chosen to include
+ * rather than improve upon...  the idea isn't to write a modern AAA+ game
+ * but to replicate the original.
+ * 
+ * If you need perfection, run it in an emulator, eg. 
+ *   https://bbc.xania.org/?disc1=sth%3AMicropower%2FBarrage.zip&autoboot
+ */
+
+
+
+// import { Player } from './Player.js';
+
+
+// The number of milliseconds between requested frames (plus the processing
+// time for the current frame, so this will always be more than 50ms as 
+// frame refresh is triggered from synchronous code.
 const frameStep = 50;
 
-// This will fix it to a mode where "45,68" followed by "0,2" will win.
+// Testing: this will fix it to a mode where "45,68" followed by "0,2" will win.
+// Useful for trying out changes.
 const testing = false;
 const random1 = () => testing ? 0.5 : Math.random();
 const random2 = () => testing ? 0.75 : Math.random();
 const random3 = () => testing ? 0.25 : Math.random();
 
-
-class Player {
-  constructor(ix, population) {
-    this.ix = ix;
-    this.label = ix ? "Right" : "Left";
-    this.population = population;
-    this.soldiers = population;
-    this.old_a = 45;
-    this.old_v = 100;
-    this.old_da = 5;
-    this.old_dv = 5;
-  }
-
-  setupBattle() {
-    this.base_x = this.ix
-      ? Math.floor(80 + random1() * 30)
-      : Math.floor(10 + random1() * 20);
-
-    this.city_x = this.ix
-      ? 126
-      : 4;
-
-    this.soldiers = Math.min(100, this.population);
-  }
-
-  shotsAvailable() {
-    if (this.soldiers <= 5) return 0;
-    return Math.floor(this.soldiers / 35) + 1;
-  }
-
-  penalty(n) {
-    this.soldiers -= n;
-    this.population -= n;
-
-    if (this.soldiers < 0) this.soldiers = 0;
-    if (this.population < 0) this.population = 0;
-
-    if (this.population < this.soldiers)
-      this.soldiers = this.population;
-  }
-
-  hitNear(playerIx, x, y) {
-    // Would be better with a velocity (K.E) element.
-    const d8 = Math.abs(x - this.base_x);
-    if (d8 > 8) return false;
-
-    const d9 = Math.floor(this.soldiers / (1.5 * Math.abs(x - this.base_x)));
-    const casualties = d8 < 1 ? this.soldiers : d9;
-    this.penalty(casualties);
-    return casualties;
-  }
-
-  hitTown(playerIx, x, y) {
-    const dx = Math.abs(this.city_x - x);
-    if (dx > 3) return false;
-
-    const penalty = Math.floor(10 + random2() * 5);
-    this.penalty(penalty);
-    return penalty;
-  }
-}
-
+// The player states. We'll have two players, players[0] and players[1]
+// which are the LEFT and RIGHT armies, respectively.
 let players = [];
+
+// In addition, we keep the current player and the current opponent in
+// "us" and "them" vars.
 let us, them;
 
-let wind, playerIx, terrain;
+// The current wind speed
+let wind;
 
+// The current battle's terrain, as an Array[130] of numbers, each
+// denoting the y-value of each of the 130 x-values.
+let terrain;
+
+
+/**
+ * Called when the user clicks the "Start Game" button, or when the
+ * players want to play again.
+ * 
+ * We need a "Start Game" button so the user interacts with the game
+ * window. This then allows audio to work.
+ */
 async function startWar() {
-  document.getElementById('start').style.display = 'none';
-  await setArmySizes();
+
+  // Get the populations of the two countries.  This is async so it can
+  // wait for the user's input.
+  const [left, right] = await getArmySizes();
+
+  // Set up the player objects
+  players = [
+    new Player(0, left),
+    new Player(1, right)
+  ];
+
+  // Start the first battle.
   startBattle();
 }
 
+/**
+ * Set up the battle.
+ * 
+ * This function chooses the order of the players, and sets up the game state.
+ * It then starts the loop using `nextPlayerUp`
+ */
+function startBattle() {
+
+  // Choose a player to start with.  If equal, we'll pick randomly.  If not,
+  // the player with the lower population goes first.
+  const playerIx =
+    (Math.floor(players[0].population) == Math.floor(players[1].population))
+      ? (random1() >= 0.5 ? 0 : 1)
+      : players[0].population < players[1].population
+        ? 0
+        : 1;
+
+  // Link to the player objects, where 'us' is the current player, and 'them'
+  // is the current opponent.  Note, this is the opposite of the 'playerIx'
+  // choice; here we say 'them' is the player to go first (playerIx).  This
+  // is because the first thing `nextPlayerUp` will do to start the battle
+  // is flip the players.
+  them = players[playerIx];
+  us = players[1 - playerIx];
+
+  // Set the players up for battle, drawing soldiers from their cities
+  // to their bases.  We also 
+  us.setupBattle();
+  them.setupBattle();
+
+  terrain = generateTerrain();
+  setWind();
+  nextPlayerUp();
+}
 
 function setWind() {
   do {
@@ -94,25 +122,6 @@ function updateWind() {
     wind3 = wind + random1() - 0.5;
   } while (Math.abs(wind3) > 50);
   wind = wind3;
-}
-
-function startBattle() {
-
-  playerIx = (Math.floor(players[0].population) == Math.floor(players[1].population))
-    ? (random1() >= 0.5 ? 0 : 1)
-    : players[0].population < players[1].population
-      ? 0
-      : 1;
-
-  us = players[playerIx];
-  them = players[1 - playerIx];
-
-  us.setupBattle();
-  them.setupBattle();
-
-  terrain = generateTerrain();
-  setWind();
-  nextPlayerUp();
 }
 
 async function gameLoop() {
@@ -190,31 +199,27 @@ async function endBattle() {
 }
 
 function nextPlayerUp() {
-  them = players[playerIx];
-  playerIx = 1 - playerIx;
-  us = players[playerIx];
+
+  // Switch the player objects
+  them = players[us.ix];
+  us = players[1 - them.ix];
 
   drawScene(true);
   setTimeout(gameLoop, 1000);
 }
 
-async function setArmySizes() {
+async function getArmySizes() {
   G.clear();
 
   const defaultSize = '300,300';
   let m;
   do {
-    let input = await inputPrompt(`Size of armies (${defaultSize})? `, 2,5);
+    let input = await inputPrompt(`Size of armies (${defaultSize})? `, 2, 5);
     if (input === '') input = defaultSize;
     m = input.match(/(\d+)\D+(\d+)/);
   } while (!m);
 
-  players = [
-    new Player(0, parseInt(m[1])),
-    new Player(1, parseInt(m[2]))
-  ];
-
-  console.log(players);
+  return [parseInt(m[1]), parseInt(m[2])];
 }
 
 async function inputPrompt(prompt, x = 0, y = 0) {
@@ -269,7 +274,7 @@ async function playerInput() {
   let deltaAng = 0, deltaVel = 0;
 
   // Adjust delta based on number of survivors
-  const shots = players[playerIx].shotsAvailable();
+  const shots = us.shotsAvailable();
   if (shots > 1) {
     do {
       let input = await inputPrompt(`ENTER DELTA ANG,VEL=?`, 0, 1);
@@ -324,7 +329,7 @@ async function fireProjectile({ shot, angle, velocity }) {
   let x = x1;
   let y = y1;
   let t = 0;
-  let v1 = (playerIx ? -1 : 1) * Math.cos(angle * Math.PI / 180) * velocity / 10;
+  let v1 = (us.ix === 1 ? -1 : 1) * Math.cos(angle * Math.PI / 180) * velocity / 10;
   let v2 = Math.sin(angle * Math.PI / 180) * velocity / 10;
   let s = 200;
   let ox = x;
@@ -420,7 +425,7 @@ async function handleLoss(victim, x, y) {
 async function handleImpact(x, y) {
   let casualties;
 
-  if (false !== (casualties = us.hitNear(playerIx, x, y))) {
+  if (false !== (casualties = us.hitNear(us.ix, x, y))) {
     if (!await handleLoss(us, x, y)) {
       drawExplosion(x, y, false);
       playNearSound();
@@ -433,7 +438,7 @@ async function handleImpact(x, y) {
     return true; // Battle over
   }
 
-  if (false !== (casualties = them.hitNear(playerIx, x, y))) {
+  if (false !== (casualties = them.hitNear(us.ix, x, y))) {
     if (!await handleLoss(them, x, y)) {
       drawExplosion(x, y, false);
       playNearSound();
@@ -446,7 +451,7 @@ async function handleImpact(x, y) {
     return true; // Battle over
   }
 
-  if (false !== (casualties = us.hitTown(playerIx, x, y))) {
+  if (false !== (casualties = us.hitTown(us.x, x, y))) {
     if (!await handleLoss(us)) {
       drawExplosion(x, y, false);
       playCityHitSound();
@@ -460,7 +465,11 @@ async function handleImpact(x, y) {
     return true; // Battle over
   }
 
-  if (false !== (casualties = them.hitTown(playerIx, x, y))) {
+  if (false !== (casualties = them.hitTown(us.ix, x, y))) {
+
+    // If you hit your enemy's city, their citizens die, but you also get
+    // slapped with a penalty sacrifice thanks to this world's version of 
+    // the Geneva Convention.
     us.penalty(casualties);
 
     if (!await handleLoss(them)) {
