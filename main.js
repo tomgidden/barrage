@@ -28,8 +28,8 @@
 // frame refresh is triggered from synchronous code.
 const frameStep = 50;
 
-// Testing: this will fix it to a mode where "45,90" will be a direct hit.
-// "45,92" will cause a city hit.
+// Testing: this will fix it to a mode where "45,89" will be a direct hit.
+// "45,95" will cause a city hit.
 // Useful for trying out changes.
 const testing = window.location.hash === '#cheat';
 const random1 = () => testing ? 0.5 : Math.random();
