@@ -471,7 +471,7 @@ async function playerInput() {
           // Check that they obey the limits 
           if (angle + absDeltaAng >= 180 || angle - absDeltaAng <= 0 || velocity - absDeltaVel < 20)
             // Fail. Repeat.
-            m = neap;
+            m = null;
         }
       }
 
