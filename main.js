@@ -26,12 +26,12 @@
 // The number of milliseconds between requested frames (plus the processing
 // time for the current frame, so this will always be more than 50ms as 
 // frame refresh is triggered from synchronous code.
-const frameStep = 50;
+const frameStep = (window.location.hash??'').includes('fast')?0:50;
 
 // Testing: this will fix it to a mode where "45,89" will be a direct hit.
-// "45,95" will cause a city hit.
+// "45,95" will cause a city hit.  "45,78" is a direct hit from the other side.
 // Useful for trying out changes.
-const testing = window.location.hash === '#cheat';
+const testing = (window.location.hash??'').includes('cheat');
 const random1 = () => testing ? 0.5 : Math.random();
 const random2 = () => testing ? 0.75 : Math.random();
 const random3 = () => testing ? 0.25 : Math.random();
