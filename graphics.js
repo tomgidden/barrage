@@ -33,15 +33,15 @@ const G = new (class {
   }
 
   scheduleFlashies() {
-    if (this.flashieTimeout) clearTimeout(this.flashieTimeout);
-    this.flashieTimeout = setTimeout(
+    if (this.flashieTimeout) clearRegisteredTimeout(this.flashieTimeout);
+    this.flashieTimeout = setRegisteredTimeout(
       this.redrawFlashies.bind(this),
       flashiePeriod
     );
   }
 
   clearFlashies() {
-    this.flashieTimeout = clearTimeout(this.flashieTimeout);
+    this.flashieTimeout = clearRegisteredTimeout(this.flashieTimeout);
     this.flashies = [];
   }
 
@@ -204,7 +204,7 @@ const drawTerrain = () => new Promise((resolve, reject) => {
     G.plotLine((i - 1) * xscale, terrain[i - 1] * yscale, (i) * xscale, terrain[i] * yscale);
     G.commit();
     if ((i += 2) < terrain.length)
-      setTimeout(render, 10);
+      setRegisteredTimeout(render, 10);
     else
       resolve(true);
   };
@@ -212,7 +212,7 @@ const drawTerrain = () => new Promise((resolve, reject) => {
   render();
 });
 
-const sleep = async delay => new Promise(resolve => setTimeout(resolve, delay ?? 1000));
+const sleep = async delay => new Promise(resolve => setRegisteredTimeout(resolve, delay ?? 1000));
 
 function message(str, cx = 0, cy = undefined) {
   G.printText(str, cx, cy);

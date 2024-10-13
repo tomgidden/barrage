@@ -1,18 +1,44 @@
 
 class Player {
-  constructor(ix, population) {
+  constructor(ix, state_or_pop = undefined) {
     this.ix = ix;
-    this.label = ix ? "Right" : "Left";
-    this.population = population;
-    this.soldiers = population;
-    this.old_a = 45;
-    this.old_v = 100;
-    this.old_da = 5;
-    this.old_dv = 5;
+
+    if ('object' === state_or_pop) {
+      this.label = state_or_pop.label;
+      this.population = state_or_pop.population;
+      this.soldiers = state_or_pop.soldiers;
+      this.angle = state_or_pop.angle;
+      this.velocity = state_or_pop.velocity;
+      this.deltaAng = state_or_pop.deltaAng;
+      this.deltaVel = state_or_pop.deltaVel;
+    } else {
+      let population = state_or_pop;
+      if (population < 0) population = 0;
+      if (population > 100) population = 100;
+      this.label = ix ? "Right" : "Left";
+      this.population = population;
+      this.soldiers = population;
+      this.angle = 45;
+      this.velocity = 100;
+      this.deltaAng = 5;
+      this.deltaVel = 5;
+    }
+  }
+
+  getState() {
+    return {
+      ix: this.ix,
+      label: this.label,
+      population: this.population,
+      soldiers: this.soldiers,
+      angle: this.angle,
+      velocity: this.velocity,
+      deltaAng: this.deltaAng,
+      deltaVel: this.deltaVel,
+    };
   }
 
   setupBattle() {
-    // 
     this.soldiers = Math.min(100, this.population);
 
     // Note, terrain generation will also set city_x and base_x.

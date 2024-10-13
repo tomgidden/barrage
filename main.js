@@ -19,37 +19,25 @@
  *   https://bbc.xania.org/?disc1=sth%3AMicropower%2FBarrage.zip&autoboot
  */
 
-//import { Player } from './Player.js';
-
-
 
 // The number of milliseconds between requested frames (plus the processing
 // time for the current frame, so this will always be more than 50ms as 
 // frame refresh is triggered from synchronous code.
-const frameStep = (window.location.hash??'').includes('fast')?0:50;
+let frameStep = (window.location.hash ?? '').includes('fast') ? 0 : 50;
 
 // Testing: this will fix it to a mode where "45,89" will be a direct hit.
 // "45,95" will cause a city hit.  "45,78" is a direct hit from the other side.
 // Useful for trying out changes.
-const testing = (window.location.hash??'').includes('cheat');
-const random1 = () => testing ? 0.5 : Math.random();
-const random2 = () => testing ? 0.75 : Math.random();
-const random3 = () => testing ? 0.25 : Math.random();
+let testing = (window.location.hash ?? '').includes('cheat');
+const random1 = () => testing ? 0.5 : prng();
+const random2 = () => testing ? 0.75 : prng();
+const random3 = () => testing ? 0.25 : prng();
 
-// The player states. We'll have two players, players[0] and players[1]
-// which are the LEFT and RIGHT armies, respectively.
-let players = [];
-
-// In addition, we keep the current player and the current opponent in
-// "us" and "them" vars.
-let us, them;
-
-// The current wind speed
-let wind;
-
-// The current battle's terrain, as an Array[130] of numbers, each
-// denoting the y-value of each of the 130 x-values.
-let terrain;
+function init() {
+  clearRegisteredTimeouts();
+  mqttSendStateQuery();
+  setRegisteredTimeout(startWar, 250);
+}
 
 /**
  * Called when the user clicks the "Start Game" button, or when the
@@ -59,6 +47,7 @@ let terrain;
  * window. This then allows audio to work.
  */
 async function startWar() {
+  setPhase('startWar'); // Set game phase (for multiplayer sync)
 
   // Get the populations of the two countries.  This is async so it can
   // wait for the user's input.
@@ -74,6 +63,29 @@ async function startWar() {
   startBattle();
 }
 
+function routePhase(_phase) {
+  console.log(`Changing phase from ${phase} to ${_phase}`);
+  
+  switch (_phase) {
+    case 'gameLoop': setRegisteredTimeout(gameLoop, 0); break;
+    case 'startWar': case 'init': setRegisteredTimeout(startWar, 0); break;
+    case 'startBattle': setRegisteredTimeout(startBattle, 0); break;
+    case 'nextPlayerUp': setRegisteredTimeout(nextPlayerUp, 0); break;
+    case 'playerInput': setRegisteredTimeout(playerInput, 0); break;
+    case 'endBattle': setRegisteredTimeout(endBattle, 0); break;
+    case 'endGame': setRegisteredTimeout(endGame, 0); break;
+
+    case 'busy':      // Shouldn't happen
+      throw new Error("Phase 'busy' shouldn't happen.");
+
+    default:
+      throw new Error(`Unknown phase: ${phase}`);
+  }
+
+  phase = _phase;
+}
+
+
 /**
  * Set up the battle.
  * 
@@ -81,6 +93,7 @@ async function startWar() {
  * It then starts the loop using `nextPlayerUp`
  */
 function startBattle() {
+  setPhase('startBattle'); // Set game phase (for multiplayer sync)
 
   // Choose a player to start with.  If equal, we'll pick randomly.  If not,
   // the player with the lower population goes first.
@@ -119,6 +132,7 @@ function startBattle() {
  * to the next player's turn.
  */
 async function gameLoop() {
+  setPhase('gameLoop'); // Set game phase (for multiplayer sync)
 
   // Update the wind. This will be the value that the player sees while
   // choosing their move.  The wind will change as projectiles fly, but
@@ -127,18 +141,18 @@ async function gameLoop() {
   updateWind();
 
   // Get the player's chosen move
-  const { angle, velocity, deltaAng, deltaVel, shots } = await playerInput();
+  await playerInput();
 
   // Fire the barrage, waiting until their turn is complete. If the result is
   // true, the battle (and possibly the war) is over. If false, we've probably
   // got to give the other player a go. It's possible the game will have ended
   // though, so we check that condition first.
-  const battleOver = await fireBarrage(angle, velocity, deltaAng, deltaVel, shots);
+  const battleOver = await fireBarrage();
 
   // If we detect the game is over (whether or not battleOver is true, but yes,
   // it probably IS true) then schedule the end screen.
   if (gameOver()) {
-    setTimeout(endGame, 1000);
+    setRegisteredTimeout(endGame, 1000);
   }
 
   // The game continues, but the battle might be over.
@@ -146,12 +160,12 @@ async function gameLoop() {
     // If the barrage finished the battle, schedule the battle over screen, which
     // should in turn schedule the next battle.
     if (battleOver)
-      setTimeout(endBattle, 1000);
+      setRegisteredTimeout(endBattle, 1000);
 
     // Otherwise, schedule the next player's go, which will activate the next run
     // of the game loop.
     else
-      setTimeout(nextPlayerUp, 1000);
+      setRegisteredTimeout(nextPlayerUp, 1000);
   }
 }
 
@@ -194,6 +208,7 @@ function battleLoser() {
  * as it assumes that is the case.
  */
 async function endGame() {
+  setPhase('endGame'); // Set game phase (for multiplayer sync)
 
   // Choose the appropriate text based on population.
   let str;
@@ -209,7 +224,7 @@ async function endGame() {
 
   // Pause and then ask if the player wants another war. Any keypress
   // indicates YES!
-  setTimeout(async () => {
+  setRegisteredTimeout(async () => {
 
     // Show message
     message(``);
@@ -218,8 +233,8 @@ async function endGame() {
 
     // Wait for keypress
     await new Promise(resolve => {
-      const onkeydown = (e) => resolve(window.removeEventListener('keydown', onkeydown));
-      window.addEventListener('keydown', onkeydown);
+      const onkeydown = (e) => resolve(window.removeEventListener('playerKeypress', onkeydown));
+      window.addEventListener('playerKeypress', onkeydown);
     });
 
     // Start the next war!
@@ -236,6 +251,8 @@ async function endGame() {
  * So, to that end, all it shows is the army / city population.
  */
 async function endBattle() {
+  setPhase('endBattle'); // Set game phase (for multiplayer sync)
+
   // Show the message as a normal in-line message on the game view. Messy, but it's what
   // the original program does!
   message(``);
@@ -244,8 +261,8 @@ async function endBattle() {
 
   // Press Any Key...
   await new Promise(resolve => {
-    const onkeydown = (e) => resolve(window.removeEventListener('keydown', onkeydown));
-    window.addEventListener('keydown', onkeydown);
+    const onkeydown = (e) => resolve(window.removeEventListener('playerKeypress', onkeydown));
+    window.addEventListener('playerKeypress', onkeydown);
   });
 
   // and start the next battle.
@@ -257,6 +274,7 @@ async function endBattle() {
  * Switch `us` and `them` players, for the next turn.
  */
 function nextPlayerUp() {
+  setPhase('nextPlayerUp'); // Set game phase (for multiplayer sync)
 
   // Switch the player objects to indicate the next player's turn.
   them = players[us.ix];
@@ -266,7 +284,7 @@ function nextPlayerUp() {
   drawScene(true);
 
   // and schedule the game loop in one second.
-  setTimeout(gameLoop, 1000);
+  setRegisteredTimeout(gameLoop, 1000);
 }
 
 /**
@@ -337,26 +355,34 @@ async function promptForTuple(prompt, cx = 0, cy = 0) {
     let buf = "";  // The buffer as it stands
     let obuf = ""; // The previous version of the buffer.
 
+    // For some reason, my MacBook has weird key codes
+    const transKeyToChar = {
+      44: ',', 188: ',',
+      45: '-', 189: '-',
+      46: '.', 190: '.'
+    };
+
     // Prepare the key event handler
     const onkeydown = (e) => {
+      const key = e.detail;
 
       // If Enter was pressed, we're done.  (Note, we could easily clear that line here)
-      if ('Enter' === e.key) {
+      if ([13].includes(key)) {
         // Remove this key event handler so we can go do everything we need.
-        window.removeEventListener('keydown', onkeydown);
+        document.removeEventListener(mqttEventName, onkeydown);
         resolve(buf);
         return;
       }
 
       // If a valid key was pressed, add it to the buffer
-      if (['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-', ',', '.'].includes(e.key)) {
-        obuf = buf;             // Copy the old buffer
-        buf += e.key;           // Amend the buffer
+      if ([48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 44, 45, 46, 188, 189, 190].includes(key)) {
+        obuf = buf; // Copy the old buffer
+        buf += transKeyToChar[key] ?? String.fromCharCode(key); // Amend the buffer
       }
 
       // Else, if we want to delete, delete.  We're not going to deal with cursor position,
       // forward-delete or anything like that.
-      else if (['Delete', 'Backspace'].includes(e.key)) {
+      else if ([8, 127].includes(key)) {
         obuf = buf;             // Copy the old buffer for comparison
         buf = buf.slice(0, -1); // Delete the last character
       }
@@ -376,7 +402,7 @@ async function promptForTuple(prompt, cx = 0, cy = 0) {
     };
 
     // Add the key event handler to start listening for keyboard activity.
-    window.addEventListener('keydown', onkeydown);
+    document.addEventListener(mqttEventName, onkeydown);
   });
 
   // Return the text result string.
@@ -400,6 +426,7 @@ async function promptForTuple(prompt, cx = 0, cy = 0) {
  * @returns {object}  angle, velocity, deltaAng, deltaVel, shots
  * */
 async function playerInput() {
+  setPhase('playerInput'); // Set game phase (for multiplayer sync)
 
   // Get the name of the player -- LEFT or RIGHT -- for display
   const currentPlayer = us.label.toUpperCase();
@@ -410,10 +437,10 @@ async function playerInput() {
     G.clearTextArea(0, 0, 40, 2);
 
     // Display the prompt and await an answer.  We'll show the previous values the user used.
-    let input = await promptForTuple(`${currentPlayer} BASE ANG,VEL (${us.old_a},${us.old_v})?`, 0, 0);
+    let input = await promptForTuple(`${currentPlayer} BASE ANG,VEL (${us.angle},${us.velocity})?`, 0, 0);
 
     // If just Enter, use the default size.
-    if (input === '') input = `${us.old_a},${us.old_v}`;
+    if (input === '') input = `${us.deltaAng},${us.deltaVel}`;
 
     // Check if it's correctly formatted: two numbers, separated
     // by a non-number - usually a comma or space. Velocity must be > 20
@@ -446,7 +473,7 @@ async function playerInput() {
       let input = await promptForTuple(`ENTER DELTA ANG,VEL=?`, 0, 1);
 
       // If just Enter, use the previous values, or 1,0
-      if (input === '') input = `${us.old_da ?? 1},${us.old_dv ?? 0}`;
+      if (input === '') input = `${us.deltaAng ?? 1},${us.deltaVel ?? 0}`;
 
       // Check if it's correctly formatted: two numbers, separated by 
       // a non-number - usually a comma or space.  Delta-angle and delta-velocity
@@ -456,8 +483,8 @@ async function playerInput() {
       // Sanity check
       if (m) {
         // Get the new deltas, or the previous values, or 1,0.
-        var deltaAng = parseFloat(m[1] ?? us.old_da ?? 1);
-        var deltaVel = parseFloat(m[2] ?? us.old_dv ?? 0);
+        var deltaAng = parseFloat(m[1] ?? us.deltaAng ?? 1);
+        var deltaVel = parseFloat(m[2] ?? us.deltaVel ?? 0);
 
         // If that failed, fail the check
         if (isNaN(deltaAng) || isNaN(deltaVel)) {
@@ -479,8 +506,11 @@ async function playerInput() {
     } while (!m);
   }
 
-  // return the chosen values
-  return { angle, velocity, deltaAng, deltaVel, shots };
+  // Save these values in the player.
+  us.angle = angle;
+  us.velocity = velocity;
+  us.deltaAng = deltaAng;
+  us.deltaVel = deltaVel;
 }
 
 /**
@@ -494,13 +524,8 @@ async function playerInput() {
  * will need to check the conditions and if appropriate handle end-game or end-battle
  * actions, or failing that, move to the next turn.
  */
-async function fireBarrage(angle, velocity, deltaAng, deltaVel, shots) {
-
-  // Save these values in the player for next time.
-  us.old_a = angle;
-  us.old_v = velocity;
-  us.old_da = deltaAng;
-  us.old_dv = deltaVel;
+async function fireBarrage() {
+  setPhase('busy'); // Set game phase (for multiplayer sync)
 
   // Position the text cursor at line 5 so messages ("NEAR MISS!", etc.) can
   // be printed.
@@ -520,15 +545,18 @@ async function fireBarrage(angle, velocity, deltaAng, deltaVel, shots) {
   // that the condition isn't set now, though, so the game loop should check.
   let battleOver = false;
 
+  // Get number of shots the player can take
+  const shots = us.shotsAvailable();
+
   // For each permitted shot:
   for (let shot = 0; shot < shots; shot++) {
 
     // Start with the set angle and velocity
-    let a = angle, v = velocity;
+    let a = us.angle, v = us.velocity;
     switch (shot) {
       // and then if it's a second or third shot, use the deltas to modify the trajectory.
-      case 1: a += deltaAng; v += deltaVel / 10; break;
-      case 2: a -= deltaAng; v -= deltaVel / 10; break;
+      case 1: a += us.deltaAng; v += us.deltaVel / 10; break;
+      case 2: a -= us.deltaAng; v -= us.deltaVel / 10; break;
     }
 
     // Redraw the bases and cities to reflect changes.  However, it does corrupt a bit here...
@@ -565,7 +593,7 @@ async function fireProjectile(angle, velocity) {
 
   // Prep all the values.
   const x1 = us.base_x;    // Start at the player's base
-  const y1 = terrain[x1]+1 // at the current height of the base
+  const y1 = terrain[x1] + 1 // at the current height of the base
   let x = x1;              // The running value of x in the projectile path
   let y = y1;              // The running value of y in the projectile path
   let t = 0;               // Physics time in "seconds". This isn't the same as real time.
@@ -650,7 +678,7 @@ async function fireProjectile(angle, velocity) {
         playProjectileSound(s--);
 
         // and schedule the next animation frame.
-        setTimeout(() => requestAnimationFrame(run), frameStep);
+        setRegisteredTimeout(() => requestAnimationFrame(run), frameStep);
         return;
       }
 
@@ -675,7 +703,6 @@ async function fireProjectile(angle, velocity) {
 
     // Check if the impact triggered or was coincident with a failure state (battle lost, game.icon);
     battleOver = await handleImpact(x, y);
-    console.log({ battleOver });
 
     // If we're in the landspace and out of the way of the city foundations, we can make a crater now.
     if (x >= 10 && x <= 120) {
@@ -770,6 +797,7 @@ async function handleLoss(victim, x, y) {
  * @returns 
  */
 async function handleImpact(x, y) {
+
   let casualties;
 
   // Test if the shot landed near or on OUR base.

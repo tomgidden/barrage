@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js"></script>
     <style>
       * {
         font-family: monospace;
@@ -54,7 +55,6 @@
         color: white;
         font-size: 24px;
         height: 32px;
-
       }
 
       canvas {
@@ -75,11 +75,14 @@
         <p><a href="https://github.com/tomgidden/js-barrage">GitHub repo</a></p>
       </div>
     </div>
+    <script src="./random.js"></script>
+    <script src="./gamestate.js"></script>
+    <script src="./mqtt.js"></script>
+    <script src="./player.js"></script>
     <script src="./chrs.js"></script>
     <script src="./terrain.js"></script>
     <script src="./sound.js"></script>
     <script src="./graphics.js"></script>
-    <script src="./Player.js"></script>
     <script src="./main.js"></script>
     <script>
       let startEl = document.getElementById("start");
@@ -91,7 +94,7 @@
         startEl.parentNode.removeChild(startEl);
         startEl = undefined;
         event.preventDefault();
-        startWar();
+        init();
       }
     </script>
   </body>
