@@ -1,5 +1,6 @@
 
 class Player {
+
   constructor(ix, state_or_pop = undefined) {
     this.ix = ix;
 
@@ -11,18 +12,20 @@ class Player {
       this.velocity = state_or_pop.velocity;
       this.deltaAng = state_or_pop.deltaAng;
       this.deltaVel = state_or_pop.deltaVel;
-    } else {
-      let population = state_or_pop;
-      if (population < 0) population = 0;
-      if (population > 100) population = 100;
-      this.label = ix ? "Right" : "Left";
-      this.population = population;
-      this.soldiers = population;
-      this.angle = 45;
-      this.velocity = 100;
-      this.deltaAng = 5;
-      this.deltaVel = 5;
+      return;
     }
+
+    let population = 'number' === typeof state_or_pop
+      ? state_or_pop
+      : 100;
+
+    this.label = ix ? "RIGHT" : "LEFT";
+    this.population = population;
+    this.soldiers = population;
+    this.angle = 45;
+    this.velocity = 100;
+    this.deltaAng = 5;
+    this.deltaVel = 5;
   }
 
   getState() {

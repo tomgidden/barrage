@@ -1,77 +1,130 @@
 const mqttPrefix = 'barrage-game-';
 const mqttBroker = "wss://test.mosquitto.org:8081";
-const mqttEventName = 'playerKeypress';
 
-let mqttClient = mqtt.connect(mqttBroker);
-let mqttTopic;
+// Our  "proxy" keydown event to allow for network keypresses (multiplayer)
+const keypressEventName = 'playerKeydown';
 
-const mqttAllowedKeyCodes = new Set([
-  8, 13, 43, 44, 45, 46, 48, 127, 188, 189, 190,
-  49, 50, 51, 52, 53, 54, 55, 56, 57
-]);
+function getGameID() {
+  var m = window.location?.hash?.match(/game-([\w\-]+)/);
+  return m ? m[1] : undefined;
+}
 
-mqttClient
-  .on("connect", () => {
-    console.log("Connected to MQTT broker");
-  })
-  .on("message", async (topic, message) => {
-    const [chan, sender, cmd] = topic.split(/\//);
+// 'gameID', if set, indicates that multiplayer-mode is requested.
+var gameID = getGameID();
 
-    if (chan !== `${mqttTopic}`)
-      // Not for us.
-      return;
+/**
+ * Handle keypresses for the game, linking in with multiplayer if necessary.
+ * 
+ * @param {Event} event 
+ */
+function keypressEventHandler(event) {
+  // If we're in multiplayer, then we need to deal with keypresses in a more complex
+  // way, so we abstract out the normal "keydown" event.
+  //
+  // If we're in singleplayer, no, but we still need to get that done.  Rather than
+  // putting multiplayer-checking code in the main game, we just treat it as if it's
+  // all happening anyway.  As a result, our normal game listens to 'playerKeydown'
+  // rather than 'keydown'.
 
-    if (sender === mqttClient.options.clientId)
-      // This is us. Ignore.
-      return;
+  // Get the key.
+  const key = event.keyCode;
 
-    switch (cmd) {
-      case 'state':
-        // Received state.
-        return mqttReceiveState(message, true);
-    
-      case 'state_query':
-        // Someone (not us) has requested the game state, so send it.
-        console.log(`Got state query`);
-        await waitForNotBusy();
+  // Send an event to our custom version of 'keydown', so the local game can use it.
+  const new_event = new CustomEvent(keypressEventName, { detail: event.keyCode });
+  document.dispatchEvent(new_event);
 
-        const stateJson = JSON.stringify(getGameState());
+  // If we're in multiplayer, we'll send this onto the game server as well.
+  if (mqttClient && mqttTopic) {
 
-        console.log(`Sending state...`);
+    //Send the message.  As it's marked with our ID, we can exclude it.
+    mqttClient.publish(
+      `${mqttTopic}/${mqttClient.options.clientId}/keypress`,
+      JSON.stringify({ key }),
+      { qos: 1 }
+    );
+  }
+}
 
-        mqttClient.publish(
-          `${mqttTopic}/${mqttClient.options.clientId}/state`,
-          stateJson,
-          { qos: 1 }
-        );
-        break;
+// And listen for it.
+window.addEventListener('keydown', keypressEventHandler);
 
-      case 'keypress':
-        // Get the keycode
-        const { key } = JSON.parse(message);
 
-        // and verify that it's in our accepted list
-        if (mqttAllowedKeyCodes.has(key)) {
+
+// The network connection and the path we send to, based on the game ID.
+var mqttClient, mqttTopic;
+
+
+
+function mqttInit() {
+  mqttClient = mqtt.connect(mqttBroker);
+
+  mqttClient
+    .on("connect", () => {
+      console.log("Connected to MQTT broker");
+    })
+
+    .on("message", async (topic, message) => {
+      const [chan, sender, cmd] = topic.split(/\//);
+
+      if (chan !== `${mqttTopic}`)
+        // Not for us.
+        return;
+
+      if (sender === mqttClient.options.clientId)
+        // This is us. Ignore.
+        return;
+
+      switch (cmd) {
+        case 'state':
+          // Received state.
+          return mqttReceiveState(message, true);
+
+        case 'state_query':
+          // Someone (not us) has requested the game state, so send it.
+          await waitForNotBusy();
+
+          const stateJson = JSON.stringify(getGameState());
+
+          mqttClient.publish(
+            `${mqttTopic}/${mqttClient.options.clientId}/state`,
+            stateJson,
+            { qos: 1 }
+          );
+          break;
+
+        case 'keypress':
+          // Get the keycode
+          const { key } = JSON.parse(message);
 
           // Okay, so send it out locally, so any input handlers can get it.
-          const ev = new CustomEvent(mqttEventName, { detail: key });
-          document.dispatchEvent(ev);
-        }
-        break;
-    }
-  });
+          // As far as the main game is concerned, this is seen as a local keypress.
+          const new_event = new CustomEvent(
+            keypressEventName,
+            { detail: key }
+          );
+          document.dispatchEvent(new_event);
+          break;
+      }
+    });
 
-mqttUpdateChannel();
 
-window.addEventListener('popstate', mqttUpdateChannel);
-window.addEventListener('keydown', mqttKeydown);
+  // Listen for change in the URL for gameID change.
+  // PROBLEMATIC. DISABLED
+  // window.addEventListener('popstate', mqttUpdateChannel);
+
+  // And subscribe to the channel.
+  mqttUpdateChannel();
+
+  // And immediately request an update from the other player if they're there.
+  mqttSendStateQuery();
+}
 
 function mqttUpdateChannel() {
 
   // See if the window hash has a game ID
-  let m = window.location.hash.match(/game-([\w\-]+)/);
-  if (m) {
+  let _gameID = getGameID();
 
+  if (_gameID && gameID !== _gameID) {
     // Yes, so start a timeout. We don't immediately set it, because the user
     // might be typing in the URL. Instead, we'll delay 500ms. Only if that
     // isn't interrupted will we unsub/resub.
@@ -87,13 +140,14 @@ function mqttUpdateChannel() {
     mqttUpdateChannel.timeout = setTimeout(() => {
 
       // Okay, this wasn't cancelled, so we can go ahead and set the channel.
+      gameID = _gameID;
 
       // Unsubscribe to the old game
       if (mqttTopic !== undefined)
         mqttClient.unsubscribe(`${oldMqttTopic}/#`);
 
       // Subscribe to the new game
-      mqttTopic = `${mqttPrefix}${m[1]}`;
+      mqttTopic = `${mqttPrefix}${gameID}`;
       mqttClient.subscribe(`${mqttTopic}/#`);
 
       // and request an update.
@@ -103,30 +157,8 @@ function mqttUpdateChannel() {
   }
 }
 
-function mqttSendStateQuery()
-{
+function mqttSendStateQuery() {
   console.log(`Sending state query`);
   if (mqttTopic)
     mqttClient.publish(`${mqttTopic}/${mqttClient.options.clientId}/state_query`, '', { qos: 1 });
-}
-
-function mqttKeydown(event) {
-  const key = event.keyCode;
-
-  if (mqttAllowedKeyCodes.has(key)) {
-
-    // Dispatch an event locally, so we can pick it up as if it were a normal key-down
-    // event
-    const ev = new CustomEvent(mqttEventName, { detail: key });
-    document.dispatchEvent(ev);
-
-    // and send it on MQTT for multiplayer.
-    if (mqttClient && mqttTopic) {
-      mqttClient.publish(
-        `${mqttTopic}/${mqttClient.options.clientId}/keypress`,
-        JSON.stringify({ key }),
-        { qos: 1 }
-      );
-    }
-  }
 }

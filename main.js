@@ -19,24 +19,41 @@
  *   https://bbc.xania.org/?disc1=sth%3AMicropower%2FBarrage.zip&autoboot
  */
 
-
 // The number of milliseconds between requested frames (plus the processing
 // time for the current frame, so this will always be more than 50ms as 
 // frame refresh is triggered from synchronous code.
-let frameStep = (window.location.hash ?? '').includes('fast') ? 0 : 50;
+let frameStep = (window.location.hash ?? '').includes('fast') // Does the URL contain '#fast'?
+  ? 0
+  : 50;
 
 // Testing: this will fix it to a mode where "45,89" will be a direct hit.
 // "45,95" will cause a city hit.  "45,78" is a direct hit from the other side.
 // Useful for trying out changes.
-let testing = (window.location.hash ?? '').includes('cheat');
+let testing = (window.location.hash ?? '').includes('cheat'); // Does the URL contain '#cheat'?
 const random1 = () => testing ? 0.5 : prng();
 const random2 = () => testing ? 0.75 : prng();
 const random3 = () => testing ? 0.25 : prng();
 
+
+
+/**
+ * The function triggered by the big Start Game button
+ */
 function init() {
-  clearRegisteredTimeouts();
-  mqttSendStateQuery();
-  setRegisteredTimeout(startWar, 250);
+
+  // Are we in multiplayer mode?  Whenever you see "gameID" that's what that means.
+  if (getGameID()) {
+    // If we have a gameID, then initialise multiplayer.
+    mqttInit();
+
+    // Prepare to start the game, but give us a moment to connect
+    clearRegisteredTimeouts();
+    setRegisteredTimeout(startWar, 500);
+  }
+  else {
+    // Single player. Just start.
+    startWar();
+  }
 }
 
 /**
@@ -62,29 +79,6 @@ async function startWar() {
   // Start the first battle.
   startBattle();
 }
-
-function routePhase(_phase) {
-  console.log(`Changing phase from ${phase} to ${_phase}`);
-  
-  switch (_phase) {
-    case 'gameLoop': setRegisteredTimeout(gameLoop, 0); break;
-    case 'startWar': case 'init': setRegisteredTimeout(startWar, 0); break;
-    case 'startBattle': setRegisteredTimeout(startBattle, 0); break;
-    case 'nextPlayerUp': setRegisteredTimeout(nextPlayerUp, 0); break;
-    case 'playerInput': setRegisteredTimeout(playerInput, 0); break;
-    case 'endBattle': setRegisteredTimeout(endBattle, 0); break;
-    case 'endGame': setRegisteredTimeout(endGame, 0); break;
-
-    case 'busy':      // Shouldn't happen
-      throw new Error("Phase 'busy' shouldn't happen.");
-
-    default:
-      throw new Error(`Unknown phase: ${phase}`);
-  }
-
-  phase = _phase;
-}
-
 
 /**
  * Set up the battle.
@@ -117,8 +111,13 @@ function startBattle() {
   us.setupBattle();
   them.setupBattle();
 
+  // Build the terrain array
   terrain = generateTerrain();
+
+  // Configure the starting wind value
   setWind();
+
+  // and start the first player's turn.
   nextPlayerUp();
 }
 
@@ -233,8 +232,8 @@ async function endGame() {
 
     // Wait for keypress
     await new Promise(resolve => {
-      const onkeydown = (e) => resolve(window.removeEventListener('playerKeypress', onkeydown));
-      window.addEventListener('playerKeypress', onkeydown);
+      const onkeydown = (e) => resolve(window.removeEventListener(keypressEventName, onkeydown));
+      document.addEventListener(keypressEventName, onkeydown);
     });
 
     // Start the next war!
@@ -261,13 +260,14 @@ async function endBattle() {
 
   // Press Any Key...
   await new Promise(resolve => {
-    const onkeydown = (e) => resolve(window.removeEventListener('playerKeypress', onkeydown));
-    window.addEventListener('playerKeypress', onkeydown);
+    const onkeydown = (e) => resolve(window.removeEventListener(keypressEventName, onkeydown));
+    document.addEventListener(keypressEventName, onkeydown);
   });
 
   // and start the next battle.
   startBattle();
 }
+
 
 
 /**
@@ -327,6 +327,20 @@ async function getArmySizes() {
   return [left, right];
 }
 
+// Acceptable key codes for user input... basically numbers,
+// minus, comma, dot, enter and backspace.
+const allowedKeyCodes = new Set([
+  8, 13, 43, 44, 45, 46, 48, 127, 188, 189, 190,
+  49, 50, 51, 52, 53, 54, 55, 56, 57
+]);
+
+// For some reason, my MacBook has weird key codes
+const transKeyToChar = {
+  44: ',', 188: ',',
+  45: '-', 189: '-',
+  46: '.', 190: '.'
+};
+
 /**
  * Asks the user for a numeric tuple, such as angle and velocity.
  * 
@@ -355,13 +369,6 @@ async function promptForTuple(prompt, cx = 0, cy = 0) {
     let buf = "";  // The buffer as it stands
     let obuf = ""; // The previous version of the buffer.
 
-    // For some reason, my MacBook has weird key codes
-    const transKeyToChar = {
-      44: ',', 188: ',',
-      45: '-', 189: '-',
-      46: '.', 190: '.'
-    };
-
     // Prepare the key event handler
     const onkeydown = (e) => {
       const key = e.detail;
@@ -369,7 +376,7 @@ async function promptForTuple(prompt, cx = 0, cy = 0) {
       // If Enter was pressed, we're done.  (Note, we could easily clear that line here)
       if ([13].includes(key)) {
         // Remove this key event handler so we can go do everything we need.
-        document.removeEventListener(mqttEventName, onkeydown);
+        document.removeEventListener(keypressEventName, onkeydown);
         resolve(buf);
         return;
       }
@@ -402,7 +409,7 @@ async function promptForTuple(prompt, cx = 0, cy = 0) {
     };
 
     // Add the key event handler to start listening for keyboard activity.
-    document.addEventListener(mqttEventName, onkeydown);
+    document.addEventListener(keypressEventName, onkeydown);
   });
 
   // Return the text result string.
@@ -908,4 +915,28 @@ async function handleImpact(x, y) {
   playImpactSound();
   await sleep(250);
   return false; // Battle not over
+}
+
+
+/**
+ * Routing for multiplayer. Just ignore this. It doesn't work well.
+ * @param {*} _phase 
+ */
+function routePhase(_phase) {
+  switch (_phase) {
+    case 'gameLoop': setRegisteredTimeout(gameLoop, 0); break;
+    case 'startWar': case 'init': setRegisteredTimeout(startWar, 0); break;
+    case 'startBattle': setRegisteredTimeout(startBattle, 0); break;
+    case 'nextPlayerUp': setRegisteredTimeout(nextPlayerUp, 0); break;
+    case 'playerInput': setRegisteredTimeout(playerInput, 0); break;
+    case 'endBattle': setRegisteredTimeout(endBattle, 0); break;
+    case 'endGame': setRegisteredTimeout(endGame, 0); break;
+
+    // Shouldn't happen
+    case 'busy': throw new Error("Phase 'busy' shouldn't happen.");
+
+    default: throw new Error(`Unknown phase: ${phase}`);
+  }
+
+  phase = _phase;
 }
