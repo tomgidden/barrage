@@ -28,9 +28,10 @@
 // frame refresh is triggered from synchronous code.
 const frameStep = 50;
 
-// Testing: this will fix it to a mode where "45,68" followed by "0,2" will win.
+// Testing: this will fix it to a mode where "45,90" will be a direct hit.
+// "45,92" will cause a city hit.
 // Useful for trying out changes.
-const testing = false;
+const testing = window.location.hash === '#cheat';
 const random1 = () => testing ? 0.5 : Math.random();
 const random2 = () => testing ? 0.75 : Math.random();
 const random3 = () => testing ? 0.25 : Math.random();
@@ -170,6 +171,10 @@ function gameOver() {
  * @returns {false|Player} If a player has lost, then return that player; otherwise `false` indicates the battle's still on.
  */
 function battleLoser() {
+  console.log({
+    uspop: us.population, ussoldiers: us.soldiers,
+    thempop: them.population, themsoldiers: them.soldiers
+  });
 
   // Has someone lost either their base or city?
   if (them.population <= 0) return them;
@@ -283,7 +288,7 @@ async function getArmySizes() {
     G.clear();
 
     // Display the prompt and await an answer.
-    let input = await promptForTuple(`Size of armies (${defaultSize})? `, 2, 5);
+    let input = await promptForTuple(`SIZE OF ARMIES (${defaultSize})?`, 2, 5);
 
     // If just Enter, use the default size.
     if (input === '') input = defaultSize;
@@ -532,17 +537,17 @@ async function fireBarrage(angle, velocity, deltaAng, deltaVel, shots) {
     drawBasesAndCities();
 
     // Fire the shot, and wait for the conclusion, including messages.
-    await fireProjectile(a, v);
+    const battleOver = await fireProjectile(a, v);
 
     // A quick pause
     await sleep(250);
 
     // And if we have a loser, complete the battle.
-    if (battleLoser())
-      battleOver = true; // Battle over
+    if (battleOver || battleLoser())
+      return true; // Battle is over.
   }
 
-  // Return true if end-battle is needed, or false if it's just next turn.
+  // Return false as it's just next turn.
   return battleOver;
 }
 
@@ -560,7 +565,7 @@ async function fireProjectile(angle, velocity) {
 
   // Prep all the values.
   const x1 = us.base_x;    // Start at the player's base
-  const y1 = terrain[x1]+4 // at the current height of the base
+  const y1 = terrain[x1]+1 // at the current height of the base
   let x = x1;              // The running value of x in the projectile path
   let y = y1;              // The running value of y in the projectile path
   let t = 0;               // Physics time in "seconds". This isn't the same as real time.
@@ -619,13 +624,6 @@ async function fireProjectile(angle, velocity) {
 
       // If we go outside the screen, we fizzle.
       if (x < 0 || x > 130) {
-
-        // Probably no sound, but we'll hook it anyway.
-        playOutOfBoundsSound();
-
-        // Short pause
-        await sleep(250);
-
         // and continue to next shot/next player
         resolveShot(false);
         return;
@@ -656,7 +654,6 @@ async function fireProjectile(angle, velocity) {
         return;
       }
 
-
       resolveShot(true); // impact
       return;
     };
@@ -664,7 +661,8 @@ async function fireProjectile(angle, velocity) {
     await run();
   });
 
-  // Okay, the shot has completed.
+  // Okay, the shot has completed.  We need to deal with the consequences,
+  // and then hand back to fireBarrage to be repeated (possibly)
 
   // Stop the projectile sound effect.
   projectileSounder.stop();
@@ -677,6 +675,7 @@ async function fireProjectile(angle, velocity) {
 
     // Check if the impact triggered or was coincident with a failure state (battle lost, game.icon);
     battleOver = await handleImpact(x, y);
+    console.log({ battleOver });
 
     // If we're in the landspace and out of the way of the city foundations, we can make a crater now.
     if (x >= 10 && x <= 120) {
@@ -689,6 +688,14 @@ async function fireProjectile(angle, velocity) {
       terrain[X + 2] -= 2;
       terrain[X + 3] -= 1;
     }
+  }
+  else { // Not impacted, so out-of-bounds or fizzle.
+
+    // Probably no sound, but we'll hook it anyway.
+    playOutOfBoundsSound();
+
+    // Short pause
+    await sleep(250);
   }
 
   // Return true if the battle should terminate here.
@@ -715,6 +722,16 @@ function updateWind() {
   wind = wind3;
 }
 
+/**
+ * Determine whether the specified player has lost the battle due to lack of soldiers or
+ * population (either by attrition or a direct hit) and if so, perform the explosion of
+ * the base and play the appropriate sound effect.
+ * 
+ * @param {Player} victim  This could be 'us' or 'them', as we also consider friendly fire
+ * @param {number} x Location of impact
+ * @param {number} y Location of impact
+ * @returns true if there's a loss of battle; false otherwise.
+ */
 async function handleLoss(victim, x, y) {
 
   if (victim.soldiers <= 0) {
@@ -725,7 +742,7 @@ async function handleLoss(victim, x, y) {
   }
 
   if (victim.population <= 0) {
-    drawExplosion(victim.city_x, terrain[victim.city_x], true);
+    drawExplosion(victim.base_x, terrain[victim.base_x], true);
     playDirectHitSound();
     await sleep(1000);
     return true;
@@ -734,75 +751,133 @@ async function handleLoss(victim, x, y) {
   return false;
 }
 
+/**
+ * Test the various consequences of an impact, depending on where it lands
+ * (and more subtlely, whether the population or soldiers count has diminshed
+ * to the point that a loss happens anyway... it's possible a battle/war
+ * can be lost without a single shot landing near a city or base.
+ * 
+ * The consequences of an impact will be presented, ie. the explosion and/or
+ * sound effect and text message.  However, the flow of the game won't be
+ * affected -- instead, the return state is handed back to `fireProjectile`
+ * then `fireBarrage` then `gameLoop` where it can be handled correctly.
+ * 
+ * The one case that doesn't go through here is when a shot goes out-of-bounds
+ * without impact, which is dealt with separately in `fireProjectile`
+ * 
+ * @param {number} x Location of impact
+ * @param {number} y Location of impact
+ * @returns 
+ */
 async function handleImpact(x, y) {
   let casualties;
 
+  // Test if the shot landed near or on OUR base.
   if (false !== (casualties = us.hitNear(us.ix, x, y))) {
-    if (!await handleLoss(us, x, y)) {
-      drawExplosion(x, y, false);
-      playNearSound();
 
-      await sleep(250);
-      centerMessage(`FRIENDLY FIRE - ${casualties} CASUALTIES`);
-      await sleep(1000);
-      return false; // Battle not over
-    }
-    return true; // Battle over
+    // Check if it affected OUR loss conditions
+    if (await handleLoss(us, x, y))
+      // Direct hit on our base, or a near miss at a late stage
+      // depleting our soldiers. The explosion's been handled by handleLoss.
+      return true; // Battle's over
+
+    // Not a direct hit, but it's still a near miss.
+    // Small explosion
+    drawExplosion(x, y, false);
+    playNearSound();
+
+    // Message.
+    await sleep(250);
+    centerMessage(`FRIENDLY FIRE - ${casualties} CASUALTIES`);
+    await sleep(1000);
+
+    return false; // Battle not over
   }
 
+  // Test if the shot landed near or on THEIR base.
   if (false !== (casualties = them.hitNear(us.ix, x, y))) {
-    if (!await handleLoss(them, x, y)) {
-      drawExplosion(x, y, false);
-      playNearSound();
 
-      await sleep(250);
-      centerMessage(`ENEMY HIT - ${casualties} CASUALTIES`);
-      await sleep(1000);
-      return false; // Battle not over
-    }
-    return true; // Battle over
+    // Check if it affected THEIR loss conditions
+    if (await handleLoss(them, x, y))
+      // Direct hit on their base, or a near miss at a late stage
+      // depleting their soldiers. The explosion's been handled by handleLoss.
+      return true; // Battle's over
+
+    // Not a direct hit, but it's still a near miss.
+    // Small explosion
+    drawExplosion(x, y, false);
+    playNearSound();
+
+    // Message.
+    await sleep(250);
+    centerMessage(`ENEMY HIT - ${casualties} CASUALTIES`);
+    await sleep(1000);
+    return false; // Battle not over
   }
 
+  // The original game ealt with hitting both cities the same way...
+  // if either city got hit, BOTH players lost soldiers, which is
+  // unfair... if YOU hit YOUR city, your enemy gets punished?
+  //
+  // I've fixed this as minimally as I can.
+
+  // Test if the shot landed on OUR city
   if (false !== (casualties = us.hitTown(us.x, x, y))) {
-    if (!await handleLoss(us)) {
-      drawExplosion(x, y, false);
-      playCityHitSound();
 
-      await sleep(250);
-      centerMessage(`CIVILIANS KILLED - ${casualties} CASUALTIES`);
-      await sleep(1000);
+    // Check if it affected OUR loss conditions
+    if (await handleLoss(us))
+      // A fatal hit on OUR city, depleting our soldiers
+      // and causing a loss. The explosion's been handled 
+      // by handleLoss.
+      return true; // Battle's over
 
-      return false; // Battle not over
-    }
-    return true; // Battle over
+    // City bombed, but not totally.
+    drawExplosion(x, y, false);
+    playCityHitSound();
+
+    // Message.
+    await sleep(250);
+    centerMessage(`CIVILIANS KILLED - ${casualties} CASUALTIES`);
+    await sleep(1000);
+
+    return false; // Battle not over
   }
 
+  // Test if the shot landed on THEIR city
   if (false !== (casualties = them.hitTown(us.ix, x, y))) {
+
+    // Check for THEIR loss.
+    if (await handleLoss(them))
+      // Fatal loss of either city, dealt with by handleLoss.
+      return true; // Battle's over
 
     // If you hit your enemy's city, their citizens die, but you also get
     // slapped with a penalty sacrifice thanks to this world's version of 
     // the Geneva Convention.
+    // Note, this only happens if their city wasn't totally lost (see above)
+    // as there was no-one left to call The Hague.
     us.penalty(casualties);
 
-    if (!await handleLoss(them)) {
-      if (!await handleLoss(us)) {
-        drawExplosion(x, y, false);
-        playCityHitSound();
-
-        await sleep(250);
-        centerMessage(`CIVILIANS KILLED - PENALTY = ${casualties}`);
-        await sleep(1000);
-        return false; // Battle not over
-      }
-    }
-    return true; // Battle over
-  }
-
-  if (!await handleLoss(us) && !await handleLoss(them)) {
+    // Not a fatal hit for either side. Cue the fireworks.
     drawExplosion(x, y, false);
-    playImpactSound();
+    playCityHitSound();
+
+    // and the message.
     await sleep(250);
+    centerMessage(`CIVILIANS KILLED - PENALTY = ${casualties}`);
+    await sleep(1000);
+
     return false; // Battle not over
   }
-  return true; // Battle over
+
+  // Impact was in the wilderness, but we still check if the big/small blind
+  // for each move caused a loss.
+  if (await handleLoss(us) || await handleLoss(them))
+    return true; // Battle's over.
+
+  // Just a boring miss.
+  drawExplosion(x, y, false);
+  playImpactSound();
+  await sleep(250);
+  return false; // Battle not over
 }

@@ -86,7 +86,6 @@ class PenaltySounder extends Sounder {
 
 const smallExplosionSounder = new NoiseSounder(1.2);
 const largeExplosionSounder = new NoiseSounder(6.0);
-const penaltySounder = new PenaltySounder();
 const projectileSounder = new ProjectileSounder();
 
 function playProjectileSound(y) {
@@ -95,7 +94,6 @@ function playProjectileSound(y) {
 }
 
 function playImpactSound() {
-  projectileSounder.stop();
   smallExplosionSounder.play();
 }
 
@@ -115,10 +113,11 @@ function playCityHitSound() {
   // 2740 flaghit=1
   // 2750 SOUND1,-15,70,4:SOUND1,-15,50,10
   smallExplosionSounder.play();
+
+  const penaltySounder = new PenaltySounder();
   penaltySounder.play();
 }
 
 function playNearSound() {
-  projectileSounder.stop();
   smallExplosionSounder.play();
 }
