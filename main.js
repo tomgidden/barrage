@@ -40,20 +40,8 @@ const random3 = () => testing ? 0.25 : prng();
  * The function triggered by the big Start Game button
  */
 function init() {
-
-  // Are we in multiplayer mode?  Whenever you see "gameID" that's what that means.
-  if (getGameID()) {
-    // If we have a gameID, then initialise multiplayer.
-    mqttInit();
-
-    // Prepare to start the game, but give us a moment to connect
-    clearRegisteredTimeouts();
-    setRegisteredTimeout(startWar, 500);
-  }
-  else {
-    // Single player. Just start.
-    startWar();
-  }
+  // Single player. Just start.
+  startWar();
 }
 
 /**
@@ -64,8 +52,6 @@ function init() {
  * window. This then allows audio to work.
  */
 async function startWar() {
-  setPhase('startWar'); // Set game phase (for multiplayer sync)
-
   // Get the populations of the two countries.  This is async so it can
   // wait for the user's input.
   const [left, right] = await getArmySizes();
@@ -87,8 +73,6 @@ async function startWar() {
  * It then starts the loop using `nextPlayerUp`
  */
 function startBattle() {
-  setPhase('startBattle'); // Set game phase (for multiplayer sync)
-
   // Choose a player to start with.  If equal, we'll pick randomly.  If not,
   // the player with the lower population goes first.
   const playerIx =
@@ -131,7 +115,6 @@ function startBattle() {
  * to the next player's turn.
  */
 async function gameLoop() {
-  setPhase('gameLoop'); // Set game phase (for multiplayer sync)
 
   // Update the wind. This will be the value that the player sees while
   // choosing their move.  The wind will change as projectiles fly, but
@@ -151,7 +134,7 @@ async function gameLoop() {
   // If we detect the game is over (whether or not battleOver is true, but yes,
   // it probably IS true) then schedule the end screen.
   if (gameOver()) {
-    setRegisteredTimeout(endGame, 1000);
+    setTimeout(endGame, 1000);
   }
 
   // The game continues, but the battle might be over.
@@ -159,12 +142,12 @@ async function gameLoop() {
     // If the barrage finished the battle, schedule the battle over screen, which
     // should in turn schedule the next battle.
     if (battleOver)
-      setRegisteredTimeout(endBattle, 1000);
+      setTimeout(endBattle, 1000);
 
     // Otherwise, schedule the next player's go, which will activate the next run
     // of the game loop.
     else
-      setRegisteredTimeout(nextPlayerUp, 1000);
+      setTimeout(nextPlayerUp, 1000);
   }
 }
 
@@ -207,8 +190,7 @@ function battleLoser() {
  * as it assumes that is the case.
  */
 async function endGame() {
-  setPhase('endGame'); // Set game phase (for multiplayer sync)
-
+  
   // Choose the appropriate text based on population.
   let str;
   if (us.population === them.population)
@@ -223,7 +205,7 @@ async function endGame() {
 
   // Pause and then ask if the player wants another war. Any keypress
   // indicates YES!
-  setRegisteredTimeout(async () => {
+  setTimeout(async () => {
 
     // Show message
     message(``);
@@ -232,8 +214,8 @@ async function endGame() {
 
     // Wait for keypress
     await new Promise(resolve => {
-      const onkeydown = (e) => resolve(window.removeEventListener(keypressEventName, onkeydown));
-      document.addEventListener(keypressEventName, onkeydown);
+      const onkeydown = (e) => resolve(window.removeEventListener('keydown', onkeydown));
+      window.addEventListener('keydown', onkeydown);
     });
 
     // Start the next war!
@@ -250,8 +232,6 @@ async function endGame() {
  * So, to that end, all it shows is the army / city population.
  */
 async function endBattle() {
-  setPhase('endBattle'); // Set game phase (for multiplayer sync)
-
   // Show the message as a normal in-line message on the game view. Messy, but it's what
   // the original program does!
   message(``);
@@ -260,8 +240,8 @@ async function endBattle() {
 
   // Press Any Key...
   await new Promise(resolve => {
-    const onkeydown = (e) => resolve(window.removeEventListener(keypressEventName, onkeydown));
-    document.addEventListener(keypressEventName, onkeydown);
+    const onkeydown = (e) => resolve(window.removeEventListener('keydown', onkeydown));
+    window.addEventListener('keydown', onkeydown);
   });
 
   // and start the next battle.
@@ -274,8 +254,6 @@ async function endBattle() {
  * Switch `us` and `them` players, for the next turn.
  */
 function nextPlayerUp() {
-  setPhase('nextPlayerUp'); // Set game phase (for multiplayer sync)
-
   // Switch the player objects to indicate the next player's turn.
   them = players[us.ix];
   us = players[1 - them.ix];
@@ -284,7 +262,7 @@ function nextPlayerUp() {
   drawScene(true);
 
   // and schedule the game loop in one second.
-  setRegisteredTimeout(gameLoop, 1000);
+  setTimeout(gameLoop, 1000);
 }
 
 /**
@@ -370,13 +348,13 @@ async function promptForTuple(prompt, cx = 0, cy = 0) {
     let obuf = ""; // The previous version of the buffer.
 
     // Prepare the key event handler
-    const onkeydown = (e) => {
-      const key = e.detail;
+    const onkeydown = (event) => {
+      const key = event.keyCode;
 
       // If Enter was pressed, we're done.  (Note, we could easily clear that line here)
       if ([13].includes(key)) {
         // Remove this key event handler so we can go do everything we need.
-        document.removeEventListener(keypressEventName, onkeydown);
+        window.removeEventListener('keydown', onkeydown);
         resolve(buf);
         return;
       }
@@ -409,7 +387,7 @@ async function promptForTuple(prompt, cx = 0, cy = 0) {
     };
 
     // Add the key event handler to start listening for keyboard activity.
-    document.addEventListener(keypressEventName, onkeydown);
+    window.addEventListener('keydown', onkeydown);
   });
 
   // Return the text result string.
@@ -433,7 +411,6 @@ async function promptForTuple(prompt, cx = 0, cy = 0) {
  * @returns {object}  angle, velocity, deltaAng, deltaVel, shots
  * */
 async function playerInput() {
-  setPhase('playerInput'); // Set game phase (for multiplayer sync)
 
   // Get the name of the player -- LEFT or RIGHT -- for display
   const currentPlayer = us.label.toUpperCase();
@@ -532,7 +509,6 @@ async function playerInput() {
  * actions, or failing that, move to the next turn.
  */
 async function fireBarrage() {
-  setPhase('busy'); // Set game phase (for multiplayer sync)
 
   // Position the text cursor at line 5 so messages ("NEAR MISS!", etc.) can
   // be printed.
@@ -658,7 +634,7 @@ async function fireProjectile(angle, velocity) {
       X = Math.round(x);
 
       // If we go outside the screen, we fizzle.
-      if (x < 0 || x > 130) {
+      if (x < 0 || x >= 130) {
         // and continue to next shot/next player
         resolveShot(false);
         return;
@@ -685,7 +661,7 @@ async function fireProjectile(angle, velocity) {
         playProjectileSound(s--);
 
         // and schedule the next animation frame.
-        setRegisteredTimeout(() => requestAnimationFrame(run), frameStep);
+        setTimeout(() => requestAnimationFrame(run), frameStep);
         return;
       }
 
@@ -917,26 +893,3 @@ async function handleImpact(x, y) {
   return false; // Battle not over
 }
 
-
-/**
- * Routing for multiplayer. Just ignore this. It doesn't work well.
- * @param {*} _phase 
- */
-function routePhase(_phase) {
-  switch (_phase) {
-    case 'gameLoop': setRegisteredTimeout(gameLoop, 0); break;
-    case 'startWar': case 'init': setRegisteredTimeout(startWar, 0); break;
-    case 'startBattle': setRegisteredTimeout(startBattle, 0); break;
-    case 'nextPlayerUp': setRegisteredTimeout(nextPlayerUp, 0); break;
-    case 'playerInput': setRegisteredTimeout(playerInput, 0); break;
-    case 'endBattle': setRegisteredTimeout(endBattle, 0); break;
-    case 'endGame': setRegisteredTimeout(endGame, 0); break;
-
-    // Shouldn't happen
-    case 'busy': throw new Error("Phase 'busy' shouldn't happen.");
-
-    default: throw new Error(`Unknown phase: ${phase}`);
-  }
-
-  phase = _phase;
-}

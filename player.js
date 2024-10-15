@@ -1,24 +1,8 @@
 
 class Player {
 
-  constructor(ix, state_or_pop = undefined) {
+  constructor(ix, population) {
     this.ix = ix;
-
-    if ('object' === state_or_pop) {
-      this.label = state_or_pop.label;
-      this.population = state_or_pop.population;
-      this.soldiers = state_or_pop.soldiers;
-      this.angle = state_or_pop.angle;
-      this.velocity = state_or_pop.velocity;
-      this.deltaAng = state_or_pop.deltaAng;
-      this.deltaVel = state_or_pop.deltaVel;
-      return;
-    }
-
-    let population = 'number' === typeof state_or_pop
-      ? state_or_pop
-      : 100;
-
     this.label = ix ? "RIGHT" : "LEFT";
     this.population = population;
     this.soldiers = population;
@@ -26,19 +10,6 @@ class Player {
     this.velocity = 100;
     this.deltaAng = 5;
     this.deltaVel = 5;
-  }
-
-  getState() {
-    return {
-      ix: this.ix,
-      label: this.label,
-      population: this.population,
-      soldiers: this.soldiers,
-      angle: this.angle,
-      velocity: this.velocity,
-      deltaAng: this.deltaAng,
-      deltaVel: this.deltaVel,
-    };
   }
 
   setupBattle() {
